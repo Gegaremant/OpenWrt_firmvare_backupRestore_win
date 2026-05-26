@@ -6,6 +6,7 @@ import threading
 import paramiko
 import tarfile
 import time
+import traceback
 
 # --- Constants & Globals / Константы и глобальные переменные ---
 LOCALES_DIR = "locales"
@@ -45,7 +46,11 @@ FALLBACK_STRINGS = {
   "msg_error_dest": "Destination folder does not exist.",
   "msg_error_firmware": "Please select a valid firmware file.",
   "msg_confirm_restore_title": "Confirm Flash",
-  "msg_confirm_restore_desc": "Are you sure you want to flash this firmware to the router?\nDO NOT turn off the power during the update."
+  "msg_confirm_restore_desc": "Are you sure you want to flash this firmware to the router?\nDO NOT turn off the power during the update.",
+  "log_window_title": "Action Log",
+  "btn_show_logs": "Show Logs",
+  "btn_hide_logs": "Hide Logs",
+  "btn_clear_logs": "Clear Logs"
 }
 
 def load_locale(lang_code):
@@ -78,6 +83,7 @@ def t(key):
 class OpenWRTToolApp:
     def __init__(self, root):
         self.root = root
+        self.is_log_visible = False
         
         # Load default locale / Загрузка локали по умолчанию
         load_locale("en")
@@ -153,9 +159,19 @@ class OpenWRTToolApp:
         self.chk_extract = ttk.Checkbutton(self.tab_backup, variable=self.extract_var)
         self.chk_extract.grid(column=0, row=1, columnspan=2, sticky=tk.W, pady=10)
 
-        self.btn_backup = ttk.Button(self.tab_backup, command=self.start_backup_thread)
-        self.btn_backup.grid(column=0, row=2, columnspan=2, pady=10)
+        # Action frame backup / Блок действий бэкапа
+        action_frame_b = ttk.Frame(self.tab_backup)
+        action_frame_b.grid(column=0, row=2, columnspan=2, sticky=(tk.W, tk.E), pady=10)
         
+        self.btn_backup = ttk.Button(action_frame_b, command=self.start_backup_thread)
+        self.btn_backup.pack(side=tk.LEFT)
+        
+        self.lbl_status_b = ttk.Label(action_frame_b, text="", foreground="blue")
+        self.lbl_status_b.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        
+        self.btn_show_logs_b = ttk.Button(action_frame_b, command=self.toggle_log_window)
+        self.btn_show_logs_b.pack(side=tk.RIGHT)
+
         self.tab_backup.columnconfigure(1, weight=1)
 
         # ================= TAB 2: RESTORE =================
@@ -182,14 +198,33 @@ class OpenWRTToolApp:
         self.chk_force_flash = ttk.Checkbutton(self.tab_restore, variable=self.force_flash_var)
         self.chk_force_flash.grid(column=0, row=2, columnspan=2, sticky=tk.W, pady=5)
 
-        self.btn_restore = ttk.Button(self.tab_restore, command=self.start_restore_thread)
-        self.btn_restore.grid(column=0, row=3, columnspan=2, pady=10)
+        # Action frame restore / Блок действий прошивки
+        action_frame_r = ttk.Frame(self.tab_restore)
+        action_frame_r.grid(column=0, row=3, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+
+        self.btn_restore = ttk.Button(action_frame_r, command=self.start_restore_thread)
+        self.btn_restore.pack(side=tk.LEFT)
+        
+        self.lbl_status_r = ttk.Label(action_frame_r, text="", foreground="blue")
+        self.lbl_status_r.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+
+        self.btn_show_logs_r = ttk.Button(action_frame_r, command=self.toggle_log_window)
+        self.btn_show_logs_r.pack(side=tk.RIGHT)
 
         self.tab_restore.columnconfigure(1, weight=1)
 
-        # Status Label (Global) / Метка статуса (общая)
-        self.lbl_status = ttk.Label(self.root, text="", foreground="blue")
-        self.lbl_status.pack(side=tk.BOTTOM, anchor=tk.W, padx=10, pady=5)
+        # Log Frame (Hidden by default) / Фрейм логов
+        self.log_frame = ttk.Frame(self.root)
+        
+        log_header = ttk.Frame(self.log_frame)
+        log_header.pack(fill=tk.X, padx=5, pady=(5, 0))
+        
+        ttk.Label(log_header, text=t("log_window_title")).pack(side=tk.LEFT)
+        self.btn_clear_logs = ttk.Button(log_header, command=self.clear_logs)
+        self.btn_clear_logs.pack(side=tk.RIGHT)
+        
+        self.log_text = tk.Text(self.log_frame, wrap=tk.WORD, state=tk.DISABLED, height=12)
+        self.log_text.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
 
     def update_ui_strings(self):
         """
@@ -214,7 +249,14 @@ class OpenWRTToolApp:
         self.chk_force_flash.config(text=t("force_flash_checkbox"))
         self.btn_restore.config(text=t("restore_btn"))
 
-        self.lbl_status.config(text=t("status_idle"))
+        log_btn_text = t("btn_hide_logs") if self.is_log_visible else t("btn_show_logs")
+        self.btn_show_logs_b.config(text=log_btn_text)
+        self.btn_show_logs_r.config(text=log_btn_text)
+        
+        self.btn_clear_logs.config(text=t("btn_clear_logs"))
+
+        self.lbl_status_b.config(text=t("status_idle"))
+        self.lbl_status_r.config(text=t("status_idle"))
 
     def change_language(self):
         """
@@ -245,9 +287,40 @@ class OpenWRTToolApp:
         Update status label safely from any thread.
         Безопасное обновление метки статуса из любого потока.
         """
+        self.log_action(text)
         def update():
-            self.lbl_status.config(text=text, foreground="red" if is_error else "blue")
+            color = "red" if is_error else "blue"
+            self.lbl_status_b.config(text=text, foreground=color)
+            self.lbl_status_r.config(text=text, foreground=color)
         self.root.after(0, update)
+
+    def log_action(self, text):
+        def _append():
+            if not hasattr(self, 'log_text') or not self.log_text.winfo_exists():
+                return
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.insert(tk.END, text + "\n")
+            self.log_text.see(tk.END)
+            self.log_text.config(state=tk.DISABLED)
+        self.root.after(0, _append)
+        print(text)
+
+    def toggle_log_window(self):
+        self.is_log_visible = not self.is_log_visible
+        if self.is_log_visible:
+            self.root.geometry("650x550")
+            self.log_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        else:
+            self.log_frame.pack_forget()
+            self.root.geometry("650x380")
+            
+        self.update_ui_strings()
+
+    def clear_logs(self):
+        if hasattr(self, 'log_text') and self.log_text.winfo_exists():
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.config(state=tk.DISABLED)
 
     def show_message(self, title, message, is_error=False, is_ask=False):
         """
@@ -296,9 +369,10 @@ class OpenWRTToolApp:
             self.set_status(t("status_connecting"))
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(hostname=ip, username=user, password=password, timeout=10)
+            ssh.connect(hostname=ip, username=user, password=password, timeout=10, look_for_keys=False, allow_agent=False, banner_timeout=200)
 
             self.set_status(t("status_generating"))
+            self.log_action(f"Executing: sysupgrade -b {remote_file}")
             stdin, stdout, stderr = ssh.exec_command(f"sysupgrade -b {remote_file}")
             exit_status = stdout.channel.recv_exit_status()
             
@@ -323,14 +397,20 @@ class OpenWRTToolApp:
 
         except Exception as e:
             error_str = str(e)
+            self.log_action(traceback.format_exc())
             self.set_status(t("status_error").replace("{error}", error_str), is_error=True)
             self.root.after(0, lambda: self.show_message(t("msg_title_error"), error_str, is_error=True))
 
         finally:
-            if sftp: sftp.close()
-            if ssh: ssh.close()
+            if sftp: 
+                sftp.close()
+                self.log_action("SFTP connection closed.")
+            if ssh: 
+                ssh.close()
+                self.log_action("SSH connection closed.")
             self.root.after(0, lambda: self.btn_backup.state(['!disabled']))
             self.root.after(0, lambda: self.btn_restore.state(['!disabled']))
+            self.log_action("Backup task finished.")
 
     # ================= RESTORE LOGIC =================
 
@@ -366,7 +446,7 @@ class OpenWRTToolApp:
             self.set_status(t("status_connecting"))
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(hostname=ip, username=user, password=password, timeout=10)
+            ssh.connect(hostname=ip, username=user, password=password, timeout=10, look_for_keys=False, allow_agent=False, banner_timeout=200)
 
             self.set_status(t("status_uploading"))
             sftp = ssh.open_sftp()
@@ -406,14 +486,20 @@ class OpenWRTToolApp:
                 self.root.after(0, lambda: self.show_message(t("msg_title_success"), t("msg_desc_restore_success")))
             else:
                 error_str = str(e)
+                self.log_action(traceback.format_exc())
                 self.set_status(t("status_error").replace("{error}", error_str), is_error=True)
                 self.root.after(0, lambda: self.show_message(t("msg_title_error"), error_str, is_error=True))
 
         finally:
-            if sftp: sftp.close()
-            if ssh: ssh.close()
+            if sftp: 
+                sftp.close()
+                self.log_action("SFTP connection closed.")
+            if ssh: 
+                ssh.close()
+                self.log_action("SSH connection closed.")
             self.root.after(0, lambda: self.btn_backup.state(['!disabled']))
             self.root.after(0, lambda: self.btn_restore.state(['!disabled']))
+            self.log_action("Restore task finished.")
 
 
 if __name__ == "__main__":

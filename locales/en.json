@@ -31,5 +31,9 @@
   "msg_error_dest": "Destination folder does not exist.",
   "msg_error_firmware": "Please select a valid firmware file.",
   "msg_confirm_restore_title": "Confirm Flash",
-  "msg_confirm_restore_desc": "Are you sure you want to flash this firmware to the router?\nDO NOT turn off the power during the update."
+  "msg_confirm_restore_desc": "Are you sure you want to flash this firmware to the router?\nDO NOT turn off the power during the update.",
+  "log_window_title": "Action Log",
+  "btn_show_logs": "Show Logs",
+  "btn_hide_logs": "Hide Logs",
+  "btn_clear_logs": "Clear Logs"
 }
