@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<!-- ==========================================
+   OpenWRT Backup & Restore Tool - HTML Layout
+   EN: Main HTML structure for the application. Uses no external CSS frameworks.
+   RU: Основная HTML-структура приложения. Не использует сторонние CSS-фреймворки.
+========================================== -->
+<html lang="en" translate="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenWRT Backup & Restore Tool</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- PyWebView handles API internally -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body oncontextmenu="return false;">
+    <!-- Abstract macOS background is handled via CSS -->
+
+    <!-- Top Bar -->
+    <div class="top-bar glass">
+        <div class="app-title">OpenWRT Backup & Restore</div>
+        <div class="top-controls">
+            <button id="btn-settings" class="icon-btn">⚙️</button>
+            <div class="lang-toggle">
+                <input type="radio" id="lang-en" name="lang" value="en" checked>
+                <label for="lang-en">English</label>
+                <input type="radio" id="lang-ru" name="lang" value="ru">
+                <label for="lang-ru">Русский</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credentials Section -->
+    <div class="credentials glass">
+        <div class="input-group">
+            <label for="ip-input" data-i18n="ip_label">IP:</label>
+            <div class="ip-container">
+                <input type="text" id="ip-input" value="192.168.1.1">
+                <span id="ip-status">⏳</span>
+            </div>
+        </div>
+        <div class="input-group">
+            <label for="user-input" data-i18n="user_label">User:</label>
+            <input type="text" id="user-input" value="root">
+        </div>
+        <div class="input-group">
+            <label for="pass-input" data-i18n="pass_label">Password:</label>
+            <input type="password" id="pass-input">
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content glass">
+        <!-- Tab Segmented Control & Logs Button -->
+        <div class="tabs-container">
+            <div class="tabs">
+                <button class="tab-btn active" data-target="tab-backup" data-i18n="tab_backup">Backup Configuration</button>
+                <button class="tab-btn" data-target="tab-restore" data-i18n="tab_restore">Restore Firmware</button>
+            </div>
+        </div>
+
+        <!-- Backup Tab -->
+        <div id="tab-backup" class="tab-content active">
+            <div class="input-row">
+                <label data-i18n="dest_label">Destination:</label>
+                <input type="text" id="dest-input" readonly>
+                <button id="btn-browse-dest" class="btn-primary" data-i18n="browse_btn">Browse...</button>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk-extract" checked>
+                <label for="chk-extract" data-i18n="extract_checkbox">Extract downloaded archive</label>
+            </div>
+            <div class="action-row">
+                <button id="btn-backup" class="btn-action" data-i18n="backup_btn">Start Backup</button>
+                <span class="status-text" id="status-backup" data-i18n="status_idle">Status: Ready</span>
+                <button class="btn-action btn-toggle-logs" style="margin-left: auto;" data-i18n="btn_show_logs">Show Logs</button>
+            </div>
+        </div>
+
+        <!-- Restore Tab -->
+        <div id="tab-restore" class="tab-content hidden">
+            <div class="input-row">
+                <label data-i18n="firmware_label">Firmware:</label>
+                <input type="text" id="fw-input" readonly>
+                <button id="btn-browse-fw" class="btn-primary" data-i18n="browse_btn">Browse...</button>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk-keep">
+                <label for="chk-keep" data-i18n="keep_config_checkbox">Keep current configuration (-c)</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk-force" checked>
+                <label for="chk-force" data-i18n="force_flash_checkbox">Force flash (-F)</label>
+            </div>
+            <div class="action-row">
+                <button id="btn-restore" class="btn-action" data-i18n="restore_btn">Start Restore</button>
+                <span class="status-text" id="status-restore" data-i18n="status_idle">Status: Ready</span>
+                <button class="btn-action btn-toggle-logs" style="margin-left: auto;" data-i18n="btn_show_logs">Show Logs</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div id="log-panel" class="log-panel glass hidden">
+        <div class="log-header">
+            <span class="log-title" data-i18n="log_window_title">Action Log</span>
+            <button id="btn-clear-logs" class="btn-ghost" data-i18n="btn_clear_logs">Clear</button>
+        </div>
+        <textarea id="log-textarea" readonly></textarea>
+    </div>
+
+    <!-- Settings Modal Overlay -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-strong">
+            <button id="btn-close-settings" class="close-btn">×</button>
+            <h2 data-i18n="settings_title">Settings</h2>
+            
+            <div class="settings-group">
+                <label data-i18n="appearance">Appearance:</label>
+                <div class="theme-toggle">
+                    <button class="theme-btn active" data-theme="system" data-i18n="theme_system">System</button>
+                    <button class="theme-btn" data-theme="light" data-i18n="theme_light">Light</button>
+                    <button class="theme-btn" data-theme="dark" data-i18n="theme_dark">Dark</button>
+                </div>
+            </div>
+
+            <!-- Transparency is handled by CSS dynamically now, so slider directly modifies UI -->
+            <div class="settings-group">
+                <label data-i18n="transparency">Transparency:</label>
+                <input type="range" id="opacity-slider" min="0.5" max="1" step="0.05" value="0.8">
+            </div>
+
+            <div class="settings-links">
+                <button id="btn-github" class="btn-link">🐈 <span data-i18n="github_repo">GitHub Repo</span></button>
+                <button id="btn-forum" class="btn-link forum-link">🌐 <span data-i18n="openwrt_forum">OpenWrt Forum</span></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
